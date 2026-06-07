@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Détection d’anomalies bitemorelles</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    body { margin:0; font-family:Arial,sans-serif; background:#f1f5f9; color:#0f172a; }
+    .container { max-width:480px; margin:25px auto; padding:15px; }
+    .card { background:#fff; padding:22px; border-radius:18px; box-shadow:0 8px 25px rgba(0,0,0,.08); }
+    h1 { font-size:22px; margin-bottom:5px; }
+    .subtitle { color:#64748b; margin-bottom:18px; font-size:14px; }
+    .status { text-align:center; padding:10px; border-radius:12px; margin-bottom:18px; font-weight:bold; }
+    .connected { background:#dcfce7; color:#166534; }
+    .disconnected { background:#fee2e2; color:#991b1b; }
+    .decision { text-align:center; font-size:24px; font-weight:bold; margin:20px 0; }
+    .danger { color:#dc2626; }
+    .safe { color:#16a34a; }
+    .row { display:flex; justify-content:space-between; gap:15px; padding:12px 0; border-bottom:1px solid #e2e8f0; }
+    .row:last-child { border-bottom:none; }
+    .label { color:#64748b; }
+    .value { font-weight:bold; text-align:right; overflow-wrap:anywhere; }
+    .log { margin-top:18px; background:#0f172a; color:#e2e8f0; padding:12px; border-radius:12px; font-size:12px; min-height:80px; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>Détection d’anomalies</h1>
+      <div class="subtitle">Résultats du modèle entraîné via MQTT</div>
+      <div id="status" class="status disconnected">Déconnecté</div>
+      <div id="decision" class="decision">En attente...</div>
+      <div class="row"><span class="label">Probabilité</span><span id="prob" class="value">--</span></div>
+      <div class="row"><span class="label">Seuil</span><span id="thr" class="value">--</span></div>
+      <div class="row"><span class="label">Ratio changement</span><span id="ratio" class="value">--</span></div>
+      <div class="row"><span class="label">Sévérité</span><span id="severity" class="value">--</span></div>
+      <div class="row"><span class="label">Test</span><span id="id_test" class="value">--</span></div>
+      <div class="row"><span class="label">Date</span><span id="timestamp" class="value">--</span></div>
+      <div id="log" class="log">Logs...</div>
+    </div>
+  </div>
+<script>
+const brokerUrl = "ws://localhost:9001";
+const topic = "anomalie/detection/resultat";
+const $ = id => document.getElementById(id);
+function log(msg){ $("log").textContent += `\n[${new Date().toLocaleTimeString()}] ${msg}`; }
+function setConnected(v){ $("status").textContent = v ? "Connecté au broker MQTT" : "Déconnecté"; $("status").className = v ? "status connected" : "status disconnected"; }
+function updateUI(data){
+  const pred = data.prediction || "--";
+  $("decision").textContent = pred === "CHANGE" ? "Changement détecté" : "Aucun changement significatif";
+  $("decision").className = pred === "CHANGE" ? "decision danger" : "decision safe";
+  $("prob").textContent = data.classification_probability ?? "--";
+  $("thr").textContent = data.classification_threshold ?? "--";
+  $("ratio").textContent = data.change_area_ratio ?? "--";
+  $("severity").textContent = data.severity ?? "--";
+  $("id_test").textContent = data.id_test ?? "--";
+  $("timestamp").textContent = data.timestamp ?? "--";
+}
+const client = mqtt.connect(brokerUrl, { clean:true, connectTimeout:4000, reconnectPeriod:2000 });
+client.on("connect", () => { setConnected(true); log("Connecté à " + brokerUrl); client.subscribe(topic, err => log(err ? "Erreur subscribe: " + err.message : "Abonné au topic: " + topic)); });
+client.on("message", (t, msg) => { log("Message reçu: " + t); try { updateUI(JSON.parse(msg.toString())); } catch(e){ log("Erreur JSON: " + e.message); } });
+client.on("error", err => { setConnected(false); log("Erreur MQTT: " + err.message); });
+client.on("close", () => { setConnected(false); log("Connexion fermée"); });
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+GUIDE RAPIDE HIVE MQ CLOUD
+
+Credentials configures:
+   USERNAME = "hivemq.webclient.1780849948851"
+   PASSWORD = "N3wi&v!jXYe4>A<56yLE"
+
+Host: e5d69244c7204e68b4a5119be24d9bc8.s1.eu.hivemq.cloud
+Port Python MQTT TLS: 8883
+Port WebSocket TLS:   8884
+Topic: pfe/siamese/anomaly/result
+
+Lance un test:
+cd backend
+python inference_onnx_mqtt_hivemq.py --t1 ../test_images/test_01_dataset/T1.png --t2 ../test_images/test_01_dataset/T2.png --id_test test_01_dataset
+
+Lance les tests Tunisie:
+double-clic sur run_tunisie.bat
+
+Ouvre le dashboard:
+web/index_hivemq.html  (connexion automatique)

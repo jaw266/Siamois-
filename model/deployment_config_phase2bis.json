@@ -1,0 +1,28 @@
+{
+  "model_name": "SiameseHybridResNet",
+  "backbone": "resnet18",
+  "img_size": 256,
+  "classification_threshold": 0.61,
+  "segmentation_threshold": 0.4099999999999999,
+  "postprocess_min_area": 100,
+  "postprocess_fill_holes": true,
+  "use_tta": true,
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "input_names": [
+    "image_A",
+    "image_B"
+  ],
+  "output_names": [
+    "seg_prob",
+    "cls_prob"
+  ]
+}

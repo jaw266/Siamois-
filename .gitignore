@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Modèle optimisé (généré automatiquement)
+model/*_optimized.onnx
+# Fichier de poids trop lourd pour GitHub (73MB) → stocker séparément
+model/*.onnx.data
+
+# Outputs générés
+outputs/masks/
+outputs/overlays/
+outputs/logs/
+outputs/results.db
+
+# Images de test synthétiques
+test_images/test_06_nouveau/
+
+# Cache Kaggle
+.cache/
+
+# IDE
+.vscode/
+.idea/

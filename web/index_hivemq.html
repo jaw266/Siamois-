@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Détection de Changement - HiveMQ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f2f5; color: #1a1a2e; min-height: 100vh; }
+
+    .header {
+      background: #1a1a2e; color: white;
+      padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header h1 { font-size: 18px; font-weight: 700; }
+    .header small { font-size: 12px; color: #8892b0; }
+    .badge {
+      padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+      background: rgba(255,80,80,.2); color: #ff8080; border: 1px solid rgba(255,80,80,.3);
+    }
+    .badge.on { background: rgba(80,255,160,.2); color: #50ffaa; border-color: rgba(80,255,160,.3); }
+
+    .page { max-width: 600px; margin: 30px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 16px; }
+
+    .card { background: white; border-radius: 14px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.07); }
+
+    /* decision */
+    .decision {
+      text-align: center; padding: 28px 20px;
+      border-top: 5px solid #ccc; transition: border-color .3s;
+    }
+    .decision.ch { border-color: #e74c3c; }
+    .decision.ok { border-color: #2ecc71; }
+    .decision p { font-size: 13px; color: #888; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .08em; }
+    .decision h2 { font-size: 26px; font-weight: 800; color: #ccc; }
+    .decision h2.ch { color: #e74c3c; }
+    .decision h2.ok { color: #2ecc71; }
+
+    /* stats */
+    .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+    .stat { text-align: center; }
+    .stat .val { font-size: 20px; font-weight: 700; color: #1a1a2e; }
+    .stat .lbl { font-size: 11px; color: #888; margin-top: 2px; }
+
+    /* prob bar */
+    .bar-wrap { background: #eee; border-radius: 6px; height: 8px; margin-top: 8px; }
+    .bar { height: 8px; border-radius: 6px; background: linear-gradient(90deg,#3b82f6,#8b5cf6); transition: width .5s; }
+
+    /* rows */
+    .row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+    .row:last-child { border-bottom: none; }
+    .row .lbl { color: #888; }
+    .row .val { font-weight: 600; }
+
+    /* severity */
+    .sev { padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+    .HIGH   { background:#fde8e8; color:#e74c3c; }
+    .MEDIUM { background:#fef3cd; color:#e67e22; }
+    .LOW    { background:#dbeafe; color:#3b82f6; }
+    .NORMAL { background:#d1fae5; color:#2ecc71; }
+
+/* log */
+    .log { background: #1a1a2e; color: #8892b0; border-radius: 8px; padding: 10px; font-size: 11px; font-family: monospace; min-height: 70px; max-height: 130px; overflow-y: auto; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Détection de Changement</h1>
+    <small>Modèle Siamese · HiveMQ Cloud</small>
+  </div>
+  <div id="badge" class="badge">Déconnecté</div>
+</div>
+
+<div class="page">
+
+  <!-- Décision -->
+  <div id="dec-card" class="card decision">
+    <p>Résultat</p>
+    <h2 id="dec-text">En attente...</h2>
+  </div>
+
+  <!-- Stats -->
+  <div class="card">
+    <div class="stats">
+      <div class="stat"><div id="s-prob" class="val">--</div><div class="lbl">Probabilité</div></div>
+      <div class="stat"><div id="s-ratio" class="val">--</div><div class="lbl">Ratio</div></div>
+      <div class="stat"><div id="s-sev" class="val">--</div><div class="lbl">Sévérité</div></div>
+    </div>
+    <div class="bar-wrap"><div id="bar" class="bar" style="width:0%"></div></div>
+  </div>
+
+  <!-- Détails -->
+  <div class="card">
+    <div class="row"><span class="lbl">Test ID</span><span id="d-id" class="val">--</span></div>
+    <div class="row"><span class="lbl">Date</span><span id="d-ts" class="val">--</span></div>
+    <div class="row"><span class="lbl">Seuil classification</span><span id="d-cthr" class="val">--</span></div>
+    <div class="row"><span class="lbl">Seuil segmentation</span><span id="d-sthr" class="val">--</span></div>
+    <div class="row"><span class="lbl">BBox</span><span id="d-bbox" class="val">--</span></div>
+  </div>
+
+<!-- Log -->
+  <div class="card" style="padding:14px">
+    <div id="log" class="log">En attente de connexion...</div>
+  </div>
+
+</div>
+
+<script>
+const BROKER = "wss://e5d69244c7204e68b4a5119be24d9bc8.s1.eu.hivemq.cloud:8884/mqtt";
+const TOPIC  = "pfe/siamese/anomaly/result";
+const USER   = "hivemq.webclient.1780849948851";
+const PASS   = "N3wi&v!jXYe4>A<56yLE";
+
+const $ = id => document.getElementById(id);
+
+function log(msg) {
+  const el = $("log");
+  el.textContent += `\n[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function setConn(on) {
+  const b = $("badge");
+  b.textContent = on ? "Connecté" : "Déconnecté";
+  b.className = on ? "badge on" : "badge";
+}
+
+function update(d) {
+  const pred = d.prediction || "";
+  const card = $("dec-card"), txt = $("dec-text");
+  if (pred === "CHANGE") {
+    card.className = "card decision ch";
+    txt.className = "ch";
+    txt.textContent = "⚠ Changement Détecté";
+  } else if (pred === "NO_CHANGE") {
+    card.className = "card decision ok";
+    txt.className = "ok";
+    txt.textContent = "✓ Aucun Changement";
+  }
+
+  const p = d.classification_probability ?? null;
+  $("s-prob").textContent  = p !== null ? (p*100).toFixed(1)+"%" : "--";
+  $("bar").style.width     = p !== null ? (p*100)+"%" : "0%";
+  $("s-ratio").textContent = d.change_area_ratio !== undefined ? (d.change_area_ratio*100).toFixed(2)+"%" : "--";
+
+  const sev = d.severity || "--";
+  $("s-sev").innerHTML = `<span class="sev ${sev}">${sev}</span>`;
+
+  $("d-id").textContent   = d.id_test ?? "--";
+  $("d-ts").textContent   = d.timestamp ?? "--";
+  $("d-cthr").textContent = d.classification_threshold ?? "--";
+  $("d-sthr").textContent = d.segmentation_threshold ?? "--";
+  const bb = d.bbox;
+  $("d-bbox").textContent = bb ? `(${bb.x_min},${bb.y_min}) → (${bb.x_max},${bb.y_max})` : "--";
+
+}
+
+const client = mqtt.connect(BROKER, { username: USER, password: PASS, clean: true, connectTimeout: 8000, reconnectPeriod: 3000 });
+client.on("connect", () => { setConn(true);  log("Connecté. Abonné: " + TOPIC); client.subscribe(TOPIC); });
+client.on("message", (t, m) => { log("Message reçu"); try { update(JSON.parse(m.toString())); } catch(e) { log("Erreur JSON"); } });
+client.on("error",   err => { setConn(false); log("Erreur: " + err.message); });
+client.on("close",   ()  => { setConn(false); log("Connexion fermée."); });
+</script>
+</body>
+</html>
