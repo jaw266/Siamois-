@@ -1,112 +1,389 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <title>Détection de Changement - HiveMQ</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Siamese Change Detection — Dashboard</title>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; background: #f0f2f5; color: #1a1a2e; min-height: 100vh; }
-
-    .header {
-      background: #1a1a2e; color: white;
-      padding: 16px 24px;
-      display: flex; align-items: center; justify-content: space-between;
+    :root {
+      --bg:       #080c14;
+      --bg2:      #0d1220;
+      --card:     #111827;
+      --card2:    #0f1729;
+      --border:   rgba(255,255,255,.07);
+      --border2:  rgba(255,255,255,.12);
+      --blue:     #3b82f6;
+      --violet:   #8b5cf6;
+      --green:    #10b981;
+      --red:      #ef4444;
+      --orange:   #f59e0b;
+      --cyan:     #06b6d4;
+      --text:     #f1f5f9;
+      --muted:    #64748b;
+      --muted2:   #94a3b8;
+      --glow-b:   rgba(59,130,246,.25);
+      --glow-r:   rgba(239,68,68,.25);
+      --glow-g:   rgba(16,185,129,.25);
     }
-    .header h1 { font-size: 18px; font-weight: 700; }
-    .header small { font-size: 12px; color: #8892b0; }
-    .badge {
-      padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
-      background: rgba(255,80,80,.2); color: #ff8080; border: 1px solid rgba(255,80,80,.3);
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+    /* Animated bg */
+    body::before{
+      content:'';position:fixed;inset:0;z-index:0;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 10%,rgba(59,130,246,.06) 0%,transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%,rgba(139,92,246,.06) 0%,transparent 60%);
+      pointer-events:none;
     }
-    .badge.on { background: rgba(80,255,160,.2); color: #50ffaa; border-color: rgba(80,255,160,.3); }
 
-    .page { max-width: 600px; margin: 30px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 16px; }
+    /* Layout */
+    .layout{display:grid;grid-template-columns:240px 1fr;grid-template-rows:auto 1fr;min-height:100vh;position:relative;z-index:1}
 
-    .card { background: white; border-radius: 14px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.07); }
-
-    /* decision */
-    .decision {
-      text-align: center; padding: 28px 20px;
-      border-top: 5px solid #ccc; transition: border-color .3s;
+    /* Sidebar */
+    .sidebar{
+      grid-row:1/3;background:var(--card);border-right:1px solid var(--border);
+      display:flex;flex-direction:column;padding:24px 0;position:sticky;top:0;height:100vh;
     }
-    .decision.ch { border-color: #e74c3c; }
-    .decision.ok { border-color: #2ecc71; }
-    .decision p { font-size: 13px; color: #888; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .08em; }
-    .decision h2 { font-size: 26px; font-weight: 800; color: #ccc; }
-    .decision h2.ch { color: #e74c3c; }
-    .decision h2.ok { color: #2ecc71; }
+    .sidebar-logo{padding:0 20px 28px;border-bottom:1px solid var(--border);margin-bottom:20px}
+    .logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--blue),var(--violet));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:10px;box-shadow:0 4px 20px var(--glow-b)}
+    .logo-title{font-size:14px;font-weight:800;letter-spacing:-.01em}
+    .logo-sub{font-size:11px;color:var(--muted);margin-top:2px}
 
-    /* stats */
-    .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
-    .stat { text-align: center; }
-    .stat .val { font-size: 20px; font-weight: 700; color: #1a1a2e; }
-    .stat .lbl { font-size: 11px; color: #888; margin-top: 2px; }
+    .nav-section{padding:0 12px;margin-bottom:4px}
+    .nav-label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;padding:0 8px;margin-bottom:6px}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;font-size:13px;font-weight:500;color:var(--muted2);cursor:pointer;transition:.15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left}
+    .nav-item:hover{background:rgba(255,255,255,.05);color:var(--text)}
+    .nav-item.active{background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(139,92,246,.1));color:var(--blue);border:1px solid rgba(59,130,246,.2)}
+    .nav-item svg{width:16px;height:16px;flex-shrink:0}
 
-    /* prob bar */
-    .bar-wrap { background: #eee; border-radius: 6px; height: 8px; margin-top: 8px; }
-    .bar { height: 8px; border-radius: 6px; background: linear-gradient(90deg,#3b82f6,#8b5cf6); transition: width .5s; }
+    .sidebar-footer{margin-top:auto;padding:20px;border-top:1px solid var(--border)}
+    .conn-badge{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:var(--card2);border:1px solid var(--border);font-size:12px;font-weight:600}
+    .conn-dot{width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0;transition:.3s}
+    .conn-dot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+    @keyframes pulse-dot{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}70%{box-shadow:0 0 0 6px rgba(239,68,68,0)}}
+    .conn-dot:not(.on){animation:pulse-dot 1.5s infinite}
 
-    /* rows */
-    .row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
-    .row:last-child { border-bottom: none; }
-    .row .lbl { color: #888; }
-    .row .val { font-weight: 600; }
+    /* Topbar */
+    .topbar{
+      grid-column:2;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;
+      border-bottom:1px solid var(--border);background:rgba(8,12,20,.8);backdrop-filter:blur(20px);
+      position:sticky;top:0;z-index:5;
+    }
+    .topbar-title{font-size:18px;font-weight:800;letter-spacing:-.02em}
+    .topbar-sub{font-size:12px;color:var(--muted);margin-top:1px}
+    .topbar-right{display:flex;align-items:center;gap:12px}
+    .chip{padding:5px 12px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid var(--border2);background:var(--card2);color:var(--muted2);letter-spacing:.04em}
+    .chip.live{border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.08);color:var(--green)}
 
-    /* severity */
-    .sev { padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
-    .HIGH   { background:#fde8e8; color:#e74c3c; }
-    .MEDIUM { background:#fef3cd; color:#e67e22; }
-    .LOW    { background:#dbeafe; color:#3b82f6; }
-    .NORMAL { background:#d1fae5; color:#2ecc71; }
+    /* Main */
+    .main{grid-column:2;padding:24px 28px;display:flex;flex-direction:column;gap:20px}
 
-/* log */
-    .log { background: #1a1a2e; color: #8892b0; border-radius: 8px; padding: 10px; font-size: 11px; font-family: monospace; min-height: 70px; max-height: 130px; overflow-y: auto; white-space: pre-wrap; }
+    /* Pages */
+    .page{display:none;flex-direction:column;gap:20px;animation:fadein .2s ease}
+    .page.active{display:flex}
+    @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+    /* Cards */
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px}
+    .card-sm{padding:16px}
+    .card-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px;display:flex;align-items:center;gap:6px}
+    .card-title::before{content:'';width:3px;height:12px;border-radius:2px;background:linear-gradient(var(--blue),var(--violet));display:block}
+
+    /* Grid layouts */
+    .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+
+    /* KPI cards */
+    .kpi{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;position:relative;overflow:hidden;transition:.2s}
+    .kpi::after{content:'';position:absolute;inset:0;border-radius:16px;pointer-events:none;transition:.3s}
+    .kpi:hover{border-color:var(--border2);transform:translateY(-1px)}
+    .kpi-icon{font-size:22px;margin-bottom:12px;display:block}
+    .kpi-val{font-size:28px;font-weight:900;letter-spacing:-.03em;line-height:1}
+    .kpi-lbl{font-size:11px;color:var(--muted);margin-top:6px;font-weight:500;text-transform:uppercase;letter-spacing:.06em}
+    .kpi-trend{font-size:11px;margin-top:8px;font-weight:600}
+    .kpi.blue .kpi-val{color:var(--blue)}
+    .kpi.green .kpi-val{color:var(--green)}
+    .kpi.red .kpi-val{color:var(--red)}
+    .kpi.orange .kpi-val{color:var(--orange)}
+
+    /* Decision hero */
+    .hero{
+      border-radius:20px;padding:32px;position:relative;overflow:hidden;
+      background:var(--card);border:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;gap:24px;
+    }
+    .hero-glow{position:absolute;inset:0;pointer-events:none;transition:.6s}
+    .hero.ch .hero-glow{background:radial-gradient(ellipse 60% 80% at 0% 50%,rgba(239,68,68,.12),transparent)}
+    .hero.ok .hero-glow{background:radial-gradient(ellipse 60% 80% at 0% 50%,rgba(16,185,129,.12),transparent)}
+    .hero-left{position:relative;z-index:1}
+    .hero-status{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px}
+    .hero-title{font-size:38px;font-weight:900;letter-spacing:-.04em;line-height:1;color:var(--muted)}
+    .hero-title.ch{color:var(--red);text-shadow:0 0 40px var(--glow-r)}
+    .hero-title.ok{color:var(--green);text-shadow:0 0 40px var(--glow-g)}
+    .hero-meta{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+    .hero-id{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted2);background:var(--card2);padding:4px 10px;border-radius:6px;border:1px solid var(--border)}
+    .hero-ts{font-size:12px;color:var(--muted)}
+    .hero-right{position:relative;z-index:1;flex-shrink:0;text-align:right}
+    .hero-circle{
+      width:120px;height:120px;border-radius:50%;position:relative;
+      display:flex;align-items:center;justify-content:center;
+      background:conic-gradient(var(--blue) 0%, var(--violet) var(--p,0%), var(--card2) var(--p,0%) 100%);
+    }
+    .hero-circle::before{content:'';position:absolute;inset:8px;border-radius:50%;background:var(--card)}
+    .hero-pct{position:relative;z-index:1;font-size:20px;font-weight:900;font-family:'JetBrains Mono',monospace;letter-spacing:-.03em}
+    .hero-pct-lbl{font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.08em}
+
+    /* Prob bar */
+    .prob-bar{height:6px;background:var(--card2);border-radius:999px;overflow:hidden;margin-top:6px}
+    .prob-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--violet));transition:width .6s cubic-bezier(.4,0,.2,1)}
+
+    /* Severity */
+    .sev{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700}
+    .sev::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+    .HIGH  {background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25)}
+    .MEDIUM{background:rgba(245,158,11,.12);color:var(--orange);border:1px solid rgba(245,158,11,.25)}
+    .LOW   {background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.25)}
+    .NORMAL{background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.25)}
+
+    /* Details rows */
+    .drow{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);font-size:13px}
+    .drow:last-child{border:none;padding-bottom:0}
+    .drow-lbl{color:var(--muted);font-weight:500}
+    .drow-val{font-weight:600;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted2)}
+
+    /* History table */
+    .table{width:100%;border-collapse:collapse}
+    .table th{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;padding:0 12px 10px;text-align:left}
+    .table td{padding:12px;font-size:13px;border-top:1px solid var(--border);vertical-align:middle}
+    .table tr:hover td{background:rgba(255,255,255,.02)}
+    .table .mono{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted2)}
+
+    /* Log */
+    .log{background:#05080f;border:1px solid var(--border);border-radius:12px;padding:14px 16px;font-size:11px;font-family:'JetBrains Mono',monospace;min-height:100px;max-height:180px;overflow-y:auto;line-height:1.7}
+    .log::-webkit-scrollbar{width:4px}
+    .log::-webkit-scrollbar-track{background:transparent}
+    .log::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+    .log .ok{color:var(--green)}
+    .log .err{color:var(--red)}
+    .log .info{color:var(--blue)}
+    .log .muted{color:var(--muted)}
+
+    /* Arch diagram */
+    .arch{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap;padding:12px 0}
+    .arch-node{background:var(--card2);border:1px solid var(--border2);border-radius:12px;padding:12px 16px;text-align:center;min-width:110px}
+    .arch-node-icon{font-size:24px;display:block;margin-bottom:4px}
+    .arch-node-title{font-size:11px;font-weight:700}
+    .arch-node-sub{font-size:10px;color:var(--muted);margin-top:2px}
+    .arch-arrow{color:var(--muted);font-size:18px;padding:0 6px;flex-shrink:0}
+    .arch-node.highlight{border-color:rgba(59,130,246,.4);background:rgba(59,130,246,.06)}
+
+    /* Scrollbar global */
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
   </style>
 </head>
 <body>
+<div class="layout">
 
-<div class="header">
-  <div>
-    <h1>Détection de Changement</h1>
-    <small>Modèle Siamese · HiveMQ Cloud</small>
-  </div>
-  <div id="badge" class="badge">Déconnecté</div>
-</div>
-
-<div class="page">
-
-  <!-- Décision -->
-  <div id="dec-card" class="card decision">
-    <p>Résultat</p>
-    <h2 id="dec-text">En attente...</h2>
-  </div>
-
-  <!-- Stats -->
-  <div class="card">
-    <div class="stats">
-      <div class="stat"><div id="s-prob" class="val">--</div><div class="lbl">Probabilité</div></div>
-      <div class="stat"><div id="s-ratio" class="val">--</div><div class="lbl">Ratio</div></div>
-      <div class="stat"><div id="s-sev" class="val">--</div><div class="lbl">Sévérité</div></div>
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🛰</div>
+      <div class="logo-title">Change Detection</div>
+      <div class="logo-sub">Siamese Network · PFE</div>
     </div>
-    <div class="bar-wrap"><div id="bar" class="bar" style="width:0%"></div></div>
-  </div>
 
-  <!-- Détails -->
-  <div class="card">
-    <div class="row"><span class="lbl">Test ID</span><span id="d-id" class="val">--</span></div>
-    <div class="row"><span class="lbl">Date</span><span id="d-ts" class="val">--</span></div>
-    <div class="row"><span class="lbl">Seuil classification</span><span id="d-cthr" class="val">--</span></div>
-    <div class="row"><span class="lbl">Seuil segmentation</span><span id="d-sthr" class="val">--</span></div>
-    <div class="row"><span class="lbl">BBox</span><span id="d-bbox" class="val">--</span></div>
-  </div>
+    <div class="nav-section">
+      <div class="nav-label">Navigation</div>
+      <button class="nav-item active" onclick="showPage('dashboard',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-item" onclick="showPage('history',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Historique
+      </button>
+      <button class="nav-item" onclick="showPage('architecture',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><path d="M12 8v3M7.5 17l4-5M16.5 17l-4-5"/></svg>
+        Architecture
+      </button>
+    </div>
 
-<!-- Log -->
-  <div class="card" style="padding:14px">
-    <div id="log" class="log">En attente de connexion...</div>
-  </div>
+    <div class="sidebar-footer">
+      <div class="conn-badge">
+        <div class="conn-dot" id="conn-dot"></div>
+        <div>
+          <div id="conn-label" style="font-size:12px;font-weight:700">Connexion...</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:1px">HiveMQ Cloud</div>
+        </div>
+      </div>
+    </div>
+  </aside>
 
+  <!-- ── TOPBAR ── -->
+  <header class="topbar">
+    <div>
+      <div class="topbar-title" id="page-title">Dashboard</div>
+      <div class="topbar-sub">Détection de changement bi-temporel en temps réel</div>
+    </div>
+    <div class="topbar-right">
+      <span class="chip" id="topic-chip">pfe/siamese/anomaly/result</span>
+      <span class="chip live" id="live-chip">● LIVE</span>
+    </div>
+  </header>
+
+  <!-- ── MAIN ── -->
+  <main class="main">
+
+    <!-- PAGE: DASHBOARD -->
+    <div id="page-dashboard" class="page active">
+
+      <!-- Hero decision -->
+      <div class="hero" id="hero">
+        <div class="hero-glow" id="hero-glow"></div>
+        <div class="hero-left">
+          <div class="hero-status">Dernier résultat</div>
+          <div class="hero-title" id="hero-title">En attente...</div>
+          <div class="hero-meta">
+            <span class="hero-id" id="hero-id">--</span>
+            <span class="hero-ts" id="hero-ts">--</span>
+            <span id="hero-sev"></span>
+          </div>
+        </div>
+        <div class="hero-right">
+          <div class="hero-circle" id="hero-circle" style="--p:0%">
+            <div>
+              <div class="hero-pct" id="hero-pct">--%</div>
+              <div class="hero-pct-lbl">Prob.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="grid-4">
+        <div class="kpi blue">
+          <span class="kpi-icon">📊</span>
+          <div class="kpi-val" id="k-prob">--</div>
+          <div class="kpi-lbl">Probabilité</div>
+          <div class="prob-bar"><div class="prob-fill" id="k-bar" style="width:0%"></div></div>
+        </div>
+        <div class="kpi orange">
+          <span class="kpi-icon">🗺</span>
+          <div class="kpi-val" id="k-ratio">--</div>
+          <div class="kpi-lbl">Zone changée</div>
+        </div>
+        <div class="kpi red">
+          <span class="kpi-icon">⚡</span>
+          <div class="kpi-val" id="k-sev">--</div>
+          <div class="kpi-lbl">Sévérité</div>
+        </div>
+        <div class="kpi green">
+          <span class="kpi-icon">📡</span>
+          <div class="kpi-val" id="k-msgs">0</div>
+          <div class="kpi-lbl">Messages reçus</div>
+        </div>
+      </div>
+
+      <!-- Details + Log -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Détails de détection</div>
+          <div class="drow"><span class="drow-lbl">Test ID</span><span class="drow-val" id="d-id">--</span></div>
+          <div class="drow"><span class="drow-lbl">Horodatage</span><span class="drow-val" id="d-ts">--</span></div>
+          <div class="drow"><span class="drow-lbl">Seuil classif.</span><span class="drow-val" id="d-cthr">--</span></div>
+          <div class="drow"><span class="drow-lbl">Seuil segment.</span><span class="drow-val" id="d-sthr">--</span></div>
+          <div class="drow"><span class="drow-lbl">Bounding Box</span><span class="drow-val" id="d-bbox">--</span></div>
+          <div class="drow"><span class="drow-lbl">TTA activé</span><span class="drow-val" id="d-tta">--</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Journal MQTT</div>
+          <div class="log" id="log">En attente de connexion...</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- PAGE: HISTORY -->
+    <div id="page-history" class="page">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:20px 20px 0">
+          <div class="card-title">Historique des détections</div>
+        </div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Test ID</th>
+              <th>Timestamp</th>
+              <th>Décision</th>
+              <th>Probabilité</th>
+              <th>Zone</th>
+              <th>Sévérité</th>
+            </tr>
+          </thead>
+          <tbody id="hist-body">
+            <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">En attente de données...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PAGE: ARCHITECTURE -->
+    <div id="page-architecture" class="page">
+      <div class="card">
+        <div class="card-title">Pipeline de détection</div>
+        <div class="arch">
+          <div class="arch-node"><span class="arch-node-icon">🖼</span><div class="arch-node-title">Images T1 + T2</div><div class="arch-node-sub">Bi-temporelles</div></div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node highlight"><span class="arch-node-icon">🧠</span><div class="arch-node-title">Modèle Siamois</div><div class="arch-node-sub">ONNX · TTA ×4</div></div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node"><span class="arch-node-icon">📄</span><div class="arch-node-title">Résultat JSON</div><div class="arch-node-sub">Proba · Masque · BBox</div></div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node highlight"><span class="arch-node-icon">📡</span><div class="arch-node-title">HiveMQ Cloud</div><div class="arch-node-sub">MQTT TLS 8883</div></div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-node"><span class="arch-node-icon">📊</span><div class="arch-node-title">Dashboard</div><div class="arch-node-sub">WebSocket · Live</div></div>
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="card card-sm">
+          <div class="card-title">Broker MQTT</div>
+          <div class="drow"><span class="drow-lbl">Host</span><span class="drow-val" style="font-size:10px">e5d69244...hivemq.cloud</span></div>
+          <div class="drow"><span class="drow-lbl">Port TLS</span><span class="drow-val">8883</span></div>
+          <div class="drow"><span class="drow-lbl">Port WSS</span><span class="drow-val">8884</span></div>
+          <div class="drow"><span class="drow-lbl">QoS</span><span class="drow-val">1 · Retain</span></div>
+        </div>
+        <div class="card card-sm">
+          <div class="card-title">Modèle</div>
+          <div class="drow"><span class="drow-lbl">Type</span><span class="drow-val">Siamois ONNX</span></div>
+          <div class="drow"><span class="drow-lbl">Phase</span><span class="drow-val">2bis</span></div>
+          <div class="drow"><span class="drow-lbl">TTA</span><span class="drow-val">4 augm.</span></div>
+          <div class="drow"><span class="drow-lbl">Runtime</span><span class="drow-val">CPU · ORT</span></div>
+        </div>
+        <div class="card card-sm">
+          <div class="card-title">Seuils</div>
+          <div class="drow"><span class="drow-lbl">Classification</span><span class="drow-val">0.61</span></div>
+          <div class="drow"><span class="drow-lbl">Segmentation</span><span class="drow-val">0.41</span></div>
+          <div class="drow"><span class="drow-lbl">Min area</span><span class="drow-val">100 px</span></div>
+          <div class="drow"><span class="drow-lbl">Fill holes</span><span class="drow-val">Oui</span></div>
+        </div>
+      </div>
+      <div class="card card-sm">
+        <div class="card-title">Niveaux de sévérité</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;padding-top:4px">
+          <span class="sev NORMAL">NORMAL — prob &lt; seuil &amp; zone &lt; 0.1%</span>
+          <span class="sev LOW">LOW — faible probabilité ou zone</span>
+          <span class="sev MEDIUM">MEDIUM — prob ≥ seuil ou zone ≥ 0.5%</span>
+          <span class="sev HIGH">HIGH — prob ≥ 90% ou zone ≥ 3%</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
 </div>
 
 <script>
@@ -116,54 +393,128 @@ const USER   = "hivemq.webclient.1780849948851";
 const PASS   = "N3wi&v!jXYe4>A<56yLE";
 
 const $ = id => document.getElementById(id);
+const history = [];
+let msgCount = 0;
 
-function log(msg) {
-  const el = $("log");
-  el.textContent += `\n[${new Date().toLocaleTimeString()}] ${msg}`;
+// Page navigation
+const pageTitles = { dashboard: 'Dashboard', history: 'Historique', architecture: 'Architecture' };
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  $('page-' + name).classList.add('active');
+  btn.classList.add('active');
+  $('page-title').textContent = pageTitles[name] || name;
+}
+
+// Log
+function log(msg, type = 'muted') {
+  const el = $('log');
+  const t = new Date().toLocaleTimeString();
+  el.innerHTML += `<div class="${type}">[${t}] ${msg}</div>`;
   el.scrollTop = el.scrollHeight;
 }
 
+// Connection
 function setConn(on) {
-  const b = $("badge");
-  b.textContent = on ? "Connecté" : "Déconnecté";
-  b.className = on ? "badge on" : "badge";
+  const dot = $('conn-dot');
+  dot.className = 'conn-dot' + (on ? ' on' : '');
+  $('conn-label').textContent = on ? 'Connecté' : 'Déconnecté';
+  $('conn-label').style.color = on ? 'var(--green)' : 'var(--red)';
+  $('live-chip').textContent = on ? '● LIVE' : '○ OFFLINE';
+  $('live-chip').className = on ? 'chip live' : 'chip';
 }
 
+// Update
 function update(d) {
-  const pred = d.prediction || "";
-  const card = $("dec-card"), txt = $("dec-text");
-  if (pred === "CHANGE") {
-    card.className = "card decision ch";
-    txt.className = "ch";
-    txt.textContent = "⚠ Changement Détecté";
-  } else if (pred === "NO_CHANGE") {
-    card.className = "card decision ok";
-    txt.className = "ok";
-    txt.textContent = "✓ Aucun Changement";
-  }
+  msgCount++;
+  $('k-msgs').textContent = msgCount;
 
+  const pred = d.prediction || '';
+  const isChange = pred === 'CHANGE';
+  const isOk = pred === 'NO_CHANGE';
+
+  // Hero
+  const hero = $('hero');
+  const title = $('hero-title');
+  hero.className = 'hero ' + (isChange ? 'ch' : isOk ? 'ok' : '');
+  title.className = 'hero-title ' + (isChange ? 'ch' : isOk ? 'ok' : '');
+  title.textContent = isChange ? '⚠ Changement Détecté' : isOk ? '✓ Aucun Changement' : 'En attente...';
+  $('hero-id').textContent = d.id_test || '--';
+  $('hero-ts').textContent = d.timestamp || '--';
+  const sev = d.severity || '';
+  $('hero-sev').innerHTML = sev ? `<span class="sev ${sev}">${sev}</span>` : '';
+
+  // Probability circle
   const p = d.classification_probability ?? null;
-  $("s-prob").textContent  = p !== null ? (p*100).toFixed(1)+"%" : "--";
-  $("bar").style.width     = p !== null ? (p*100)+"%" : "0%";
-  $("s-ratio").textContent = d.change_area_ratio !== undefined ? (d.change_area_ratio*100).toFixed(2)+"%" : "--";
+  const pct = p !== null ? Math.round(p * 100) : 0;
+  $('hero-circle').style.setProperty('--p', pct + '%');
+  const color = isChange ? 'var(--red)' : isOk ? 'var(--green)' : 'var(--blue)';
+  $('hero-circle').style.background = `conic-gradient(${color} 0%, ${color} ${pct}%, var(--card2) ${pct}% 100%)`;
+  $('hero-pct').textContent = p !== null ? pct + '%' : '--%';
 
-  const sev = d.severity || "--";
-  $("s-sev").innerHTML = `<span class="sev ${sev}">${sev}</span>`;
+  // KPIs
+  const pStr = p !== null ? (p * 100).toFixed(1) + '%' : '--';
+  $('k-prob').textContent = pStr;
+  $('k-bar').style.width = p !== null ? (p * 100) + '%' : '0%';
+  $('k-ratio').textContent = d.change_area_ratio !== undefined ? (d.change_area_ratio * 100).toFixed(2) + '%' : '--';
+  $('k-sev').textContent = sev || '--';
+  $('k-sev').style.color = sev === 'HIGH' ? 'var(--red)' : sev === 'MEDIUM' ? 'var(--orange)' : sev === 'LOW' ? 'var(--blue)' : 'var(--green)';
 
-  $("d-id").textContent   = d.id_test ?? "--";
-  $("d-ts").textContent   = d.timestamp ?? "--";
-  $("d-cthr").textContent = d.classification_threshold ?? "--";
-  $("d-sthr").textContent = d.segmentation_threshold ?? "--";
+  // Details
+  $('d-id').textContent = d.id_test ?? '--';
+  $('d-ts').textContent = d.timestamp ?? '--';
+  $('d-cthr').textContent = d.classification_threshold ?? '--';
+  $('d-sthr').textContent = d.segmentation_threshold ?? '--';
   const bb = d.bbox;
-  $("d-bbox").textContent = bb ? `(${bb.x_min},${bb.y_min}) → (${bb.x_max},${bb.y_max})` : "--";
+  $('d-bbox').textContent = bb ? `(${bb.x_min},${bb.y_min}) → (${bb.x_max},${bb.y_max})` : 'Aucune';
+  $('d-tta').textContent = d.tta_enabled ? 'Oui' : 'Non';
 
+  // History table
+  history.unshift(d);
+  if (history.length > 50) history.pop();
+  const rows = history.map(r => {
+    const rc = r.prediction === 'CHANGE' ? 'var(--red)' : 'var(--green)';
+    const pp = r.classification_probability;
+    return `<tr>
+      <td><span class="mono">${r.id_test || '--'}</span></td>
+      <td><span class="mono" style="color:var(--muted)">${r.timestamp || '--'}</span></td>
+      <td><span style="color:${rc};font-weight:700;font-size:12px">${r.prediction || '--'}</span></td>
+      <td><span class="mono">${pp !== undefined ? (pp*100).toFixed(2)+'%' : '--'}</span></td>
+      <td><span class="mono">${r.change_area_ratio !== undefined ? (r.change_area_ratio*100).toFixed(3)+'%' : '--'}</span></td>
+      <td>${r.severity ? `<span class="sev ${r.severity}">${r.severity}</span>` : '--'}</td>
+    </tr>`;
+  }).join('');
+  $('hist-body').innerHTML = rows || `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Aucune donnée</td></tr>`;
 }
 
-const client = mqtt.connect(BROKER, { username: USER, password: PASS, clean: true, connectTimeout: 8000, reconnectPeriod: 3000 });
-client.on("connect", () => { setConn(true);  log("Connecté. Abonné: " + TOPIC); client.subscribe(TOPIC); });
-client.on("message", (t, m) => { log("Message reçu"); try { update(JSON.parse(m.toString())); } catch(e) { log("Erreur JSON"); } });
-client.on("error",   err => { setConn(false); log("Erreur: " + err.message); });
-client.on("close",   ()  => { setConn(false); log("Connexion fermée."); });
+// MQTT
+const client = mqtt.connect(BROKER, {
+  username: USER, password: PASS,
+  clean: true, connectTimeout: 10000, reconnectPeriod: 4000,
+  clientId: 'dash-' + Math.random().toString(16).slice(2,8)
+});
+
+client.on('connect', () => {
+  setConn(true);
+  log('Connecté à HiveMQ Cloud', 'ok');
+  log('Topic abonné : ' + TOPIC, 'info');
+  client.subscribe(TOPIC, { qos: 1 });
+});
+
+client.on('message', (t, m) => {
+  try {
+    const d = JSON.parse(m.toString());
+    update(d);
+    const p = d.classification_probability;
+    log(`Message reçu — ${d.id_test} | ${d.prediction} | ${p !== undefined ? (p*100).toFixed(1)+'%' : '--'} | ${d.severity}`, 'ok');
+  } catch(e) {
+    log('Erreur JSON : ' + e.message, 'err');
+  }
+});
+
+client.on('error',     err => { setConn(false); log('Erreur : ' + err.message, 'err'); });
+client.on('close',     ()  => { setConn(false); log('Connexion fermée — reconnexion...', 'err'); });
+client.on('reconnect', ()  => log('Tentative de reconnexion...', 'muted'));
 </script>
 </body>
 </html>
